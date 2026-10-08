@@ -11,7 +11,11 @@
 > webcam (Media Foundation). It is free, GPL-3.0 and still experimental. The camera works in the Windows Camera app and web apps;
 > OBS (DirectShow) and a real virtual microphone are not there yet. Docs are in Portuguese for now — issues and PRs in English are welcome.
 
-<!-- Capturas de ecrã: adicione em docs/images/ e mostre aqui a app Windows e a app Android. -->
+### Android App
+![Android App](docs/images/APP-android.png)
+
+### Windows PC App
+![Windows App](docs/images/APP-win.png)
 
 ---
 
