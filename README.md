@@ -12,10 +12,10 @@
 > OBS (DirectShow) and a real virtual microphone are not there yet. Docs are in Portuguese for now — issues and PRs in English are welcome.
 
 ### Android App
-![Android App](docs/images/APP-android.png)
-
-### Windows PC App
-![Windows App](docs/images/APP-win.png)
+<p align="center">
+  <img src="docs/images/APP-android.png" width="300" alt="PhoneBridge Android App">
+  <img src="docs/images/APP-win.png" width="500" alt="PhoneBridge Windows App">
+</p>
 
 ---
 
