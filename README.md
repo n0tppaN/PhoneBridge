@@ -1,114 +1,265 @@
 # PhoneBridge
 
-Transforma um telemóvel Android numa fonte de **câmara virtual Windows** através de USB/ADB.
+**Use o telemóvel Android como câmara (e, em breve, microfone) do seu PC Windows — por USB, sem root, grátis e de código aberto.**
 
-> **Estado atual:** a câmara virtual está em fase experimental e foi testada com a Câmara do Windows e aplicações web. O microfone virtual nativo Windows ainda não está incluído: sem um driver de áudio assinado não é possível expor um novo endpoint de microfone ao Discord/Teams apenas com C++ user-mode.
+![Licença](https://img.shields.io/badge/licen%C3%A7a-GPL--3.0-blue)
+![Windows](https://img.shields.io/badge/Windows-11%20x64-0078D4)
+![Android](https://img.shields.io/badge/Android-10%2B-3DDC84)
+![Estado](https://img.shields.io/badge/estado-experimental-orange)
+
+> **English, in short:** PhoneBridge streams your Android phone's camera to a Windows 11 PC over USB/ADB and exposes it as a virtual
+> webcam (Media Foundation). It is free, GPL-3.0 and still experimental. The camera works in the Windows Camera app and web apps;
+> OBS (DirectShow) and a real virtual microphone are not there yet. Docs are in Portuguese for now — issues and PRs in English are welcome.
+
+<!-- Capturas de ecrã: adicione em docs/images/ e mostre aqui a app Windows e a app Android. -->
 
 ---
 
-## System Architecture
+## Índice
 
-```text
-+------------------------------------+                +--------------------------------------+
-| Android App (Kotlin + Compose)     |                | Windows PC (C++20 & .NET WebView2)   |
-|                                    |                |                                      |
-|  Camera2 -> MediaCodec (H.264)     | -- TCP over -->| AdbTransport (adb forward)           |
-|  AudioRecord -> PCM 48kHz          |    ADB socket  | ConnectionManager (Handshake/Frames) |
-|  BridgeServer (Socket Server)      |                |   |                                  |
-+------------------------------------+                +--------------------------------------+
-                                                      |   +--> VideoReceiver -> H264Decoder  |
-                                                      |   +--> AudioReceiver -> ring buffer    |
-                                                      |   +--> Shared Memory Writer (Writer) |
-                                                      +--------------------------------------+
-                                                                         |
-                                                            (Named File Mapping IPC)
-                                                                         v
-                                                      +--------------------------------------+
-                                                      | Windows Camera Frame Server (svchost)|
-                                                      |                                      |
-                                                      |  phonebridge_mediasource.dll (COM)   |
-                                                      |  - IMFMediaSourceEx                  |
-                                                      |  - IMFMediaStream2 (Reader NV12)     |
-                                                      +--------------------------------------+
-                                                                         |
-                                                      +--------------------------------------+
-                                                      | Windows Camera App / OBS Studio / Zoom|
-                                                      +--------------------------------------+
+- [O que faz](#o-que-faz)
+- [Estado atual](#estado-atual)
+- [Como funciona](#como-funciona)
+- [Requisitos](#requisitos)
+- [Instalação (a partir do código)](#instala%C3%A7%C3%A3o-a-partir-do-c%C3%B3digo)
+- [Utilização](#utiliza%C3%A7%C3%A3o)
+- [Resolução de problemas](#resolu%C3%A7%C3%A3o-de-problemas)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Desenvolvimento](#desenvolvimento)
+- [Segurança e privacidade](#seguran%C3%A7a-e-privacidade)
+- [Roadmap](#roadmap)
+- [Contribuir](#contribuir)
+- [Licença](#licen%C3%A7a)
+
+---
+
+## O que faz
+
+- Transmite a **câmara traseira** do telemóvel (1080p · 30 fps, H.264 por hardware) para o PC por **USB**.
+- Mostra-a no Windows como uma **câmara virtual** chamada **"Câmera (PhoneBridge)"**, que qualquer app compatível pode escolher.
+- Tem uma **app Android** (Jetpack Compose) e uma **app Windows** (janela única, escura, com interruptores para Câmara e Microfone).
+- Pensado para baixa latência: sem Wi-Fi, sem nuvem, sem contas. Tudo corre localmente.
+
+## Estado atual
+
+O PhoneBridge está em fase **experimental** (pré-1.0). O que funciona e o que não funciona, sem rodeios:
+
+| Funcionalidade | Estado |
+|---|---|
+| Transporte USB/ADB, handshake, reconexão | ✅ implementado |
+| Captura Android (Camera2 → H.264) e descodificação no PC | ✅ implementado |
+| Câmara virtual (Media Foundation) na **Câmara do Windows** e em aplicações web | ✅ testado |
+| App Windows com interruptores Câmara/Microfone em direto | ✅ implementado |
+| Instalação do driver da câmara a partir da própria app | ✅ implementado |
+| **Discord** | ⚠️ experimental — pode não listar a câmara |
+| **OBS Studio** | ❌ ainda não — o OBS só lista câmaras DirectShow (ver [Roadmap](#roadmap)) |
+| Teams, Zoom e outras | ❔ não testado |
+| **Microfone no Windows** | ❌ o áudio é recebido e guardado em buffer, mas **não aparece como microfone** nas apps (precisa de um driver de áudio assinado) |
+| Escolher câmara frontal/traseira, resolução e débito | ❌ valores fixos nesta versão: câmara traseira, 1080p, 30 fps, 8 Mbps |
+| Pré-visualização dentro da app Windows | ❌ a imagem vai direta para a câmara virtual |
+
+Lista completa em [`BUGS_AND_ROADMAP.md`](BUGS_AND_ROADMAP.md).
+
+## Como funciona
+
+```
+ Android (Kotlin + Compose)                         PC Windows 11
+┌─────────────────────────────┐                ┌────────────────────────────────────────────┐
+│ Camera2 → MediaCodec H.264  │                │ PhoneBridge.exe  (WPF + WebView2, UI React)│
+│ AudioRecord → PCM 48 kHz    │                │        │ JSON por linhas (stdin/stdout)    │
+│ BridgeServer (socket local) │◀── USB / ADB ─▶│ phonebridge_service.exe  (C++20)           │
+└─────────────────────────────┘ adb forward    │   ConnectionManager · VideoReceiver        │
+                                tcp:27183 →    │   H.264 → NV12 (Media Foundation MFT)      │
+                                localabstract: │        │ memória partilhada                │
+                                phonebridge    │        ▼ Global\PhoneBridgeCameraFrame     │
+                                               │ phonebridge_mediasource.dll  (COM)         │
+                                               │   carregada pelo Windows Camera Frame Server│
+                                               └──────────────────┬─────────────────────────┘
+                                                                  ▼
+                                                   Câmara do Windows · browsers · outras apps
 ```
 
----
+1. A app Android escuta num socket local (`localabstract:phonebridge`) e aguarda o PC.
+2. O motor do PC faz `adb forward`, liga-se, troca o handshake e pede câmara e/ou microfone ao telemóvel.
+3. O vídeo H.264 é descodificado para NV12 e escrito numa **memória partilhada** de 3 posições.
+4. Uma DLL COM (`phonebridge_mediasource.dll`), carregada pelo **Windows Camera Frame Server**, lê essa memória e entrega os frames às aplicações.
+5. A janela do PhoneBridge arranca o motor (`--ui`) e controla-o por mensagens JSON, uma por linha.
 
-## Estado e limitações
-
-Estão implementados o transporte ADB, handshake, parser incremental, captura Android, decoder H.264, shared memory NV12 e a UI WebView2. O áudio PCM é recebido para buffers e diagnóstico, mas **não é um microfone Windows selecionável**.
-
-O Windows exige um endpoint virtual com driver WaveRT/SYSVAD assinado para que Discord, Teams e browsers o vejam como input. O PhoneBridge não depende de VB-Audio nem tenta usar `waveOut` como microfone. Um WAV de diagnóstico só é criado quando `PHONEBRIDGE_DIAGNOSTIC_WAV=1`.
-
-A câmara usa `MFCreateVirtualCamera` no Windows 11. São anunciados NV12 e YUY2 e existe uma secção de diagnóstico em `docs/diagnostics.md`. A compatibilidade com OBS é uma limitação conhecida: a fonte atual é Media Foundation e o OBS usa normalmente DirectShow. Ver `docs/directshow-compatibility.md` e `tools/check_directshow_camera.ps1`.
-
-## Project Structure
-
-- **`android/`**: Native Android application built with Jetpack Compose (Material 3), Camera2 H.264 hardware encoding, and AudioRecord PCM streaming.
-- **`windows/`**: Windows C++20 backend service (`phonebridge_service.exe`), virtual camera Media Foundation COM DLL (`phonebridge_mediasource.dll`), and WebView2 desktop UI wrapper (`PhoneBridge.exe`).
-- **`protocol/`**: Shared binary protocol definitions and packet parsers.
-- **`tools/`**: PowerShell control center GUI (`phonebridge_gui.ps1`) and testing scripts.
-
----
+O protocolo binário (cabeçalho de 28 bytes, pacotes de vídeo, áudio, controlo e *heartbeat*) está descrito em [`docs/spec.md`](docs/spec.md).
 
 ## Requisitos
 
-- Windows 11 x64, idealmente build 22000 ou posterior;
-- Android 10/API 29 ou posterior;
-- Android SDK/ADB e depuração USB autorizada;
-- Visual Studio 2022 com Desktop C++, Windows 11 SDK e CMake;
-- Android Studio com JDK 17 e SDK 34;
-- WebView2 Runtime para a UI.
+**Telemóvel**
+- Android 10 (API 29) ou superior, com **depuração USB** ativada e autorizada neste PC.
 
-## Build
+**PC**
+- Windows 11 x64 (recomendado 22H2 ou posterior — a câmara virtual usa `MFCreateVirtualCamera`).
+- [Android platform-tools (ADB)](https://developer.android.com/tools/releases/platform-tools) no `PATH`, ou o Android Studio instalado (o motor também procura em `%LOCALAPPDATA%\Android\Sdk\platform-tools`).
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (já vem com o Windows 11).
+- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) para correr a app publicada.
+- Permissões de **administrador** (a câmara virtual regista uma DLL em `HKLM` e usa memória partilhada global).
 
-### Protocolo e testes portáveis
+**Para compilar**
+- Visual Studio 2022 com *Desktop development with C++* e o Windows 11 SDK, e CMake 3.20+.
+- .NET 8 SDK.
+- Node.js 22+ (só se alterar o ecrã em `ui/`).
+- Android Studio (JDK 17, SDK 34) para a app Android.
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
+## Instalação (a partir do código)
 
-### Windows
+Ainda não há versões prontas a descarregar: compila-se a partir do código.
+
+### 1. App Android
+
+1. Abra a pasta `android/` no Android Studio.
+2. Ligue o telemóvel por USB (depuração USB autorizada) e execute a variante `debug`.
+3. Abra a app **PhoneBridge** no telemóvel e toque em **Iniciar** (aceite as permissões de câmara, microfone e notificações).
+
+### 2. Motor e câmara virtual (C++)
 
 ```powershell
 cmake -S windows -B windows/build -A x64
 cmake --build windows/build --config Release
-cd ui; npm ci; npm test; npm run build; cd ..
-dotnet build windows/app/PhoneBridge/PhoneBridge.csproj -c Release
 ```
 
-### Android
+Gera `windows/build/Release/phonebridge_service.exe` e `phonebridge_mediasource.dll`.
 
-Abrir `android/` no Android Studio e executar a variante `debug` num dispositivo com depuração USB autorizada.
+### 3. Ecrã da app (React) — só na primeira vez ou se o alterar
 
-## Getting Started
+Os ficheiros compilados do ecrã não estão no repositório, por isso este passo é necessário:
 
-### 1. Android App
-1. Open the `android/`project in Android Studio.
-2. Connect your Android device via USB with USB Debugging enabled.
-3. Build and run the app. Tap **Start** to begin streaming.
+```powershell
+cd ui
+npm ci
+npm test
+npm run build
+cd ..
+```
 
-### 2. Windows PC & Control Center
-1. Run `adb forward tcp:27183 tcp:27183` to set up port forwarding.
-2. Run the PowerShell control center GUI:
-   ```powershell
-   .\tools\phonebridge_gui.ps1
-   ```
-3. Inicie `PhoneBridge.exe` como administrador quando a instalação/Frame Server pedir elevação.
+O resultado vai para `windows/app/PhoneBridge/wwwroot`.
 
-## Diagnóstico rápido do Discord
+### 4. App Windows
 
-1. Feche completamente o Discord, incluindo o processo no tray, e abra-o novamente.
-2. Confirme primeiro que a câmara funciona na Câmara do Windows.
-3. Não use a mesma câmara simultaneamente na Câmara do Windows/OBS e no Discord.
-4. Em Discord, desative temporariamente a aceleração de hardware e selecione novamente `Câmara (PhoneBridge)`.
-5. Consulte `C:\ProgramData\PhoneBridge\logs\phonebridge_camera.log` e procure erros `RequestSample`, `MFMediaSample` ou `QueryInterface`.
-6. Registe a DLL x64 com `windows/scripts/install_camera.ps1` e reinicie o Frame Server.
+```powershell
+dotnet publish windows/app/PhoneBridge/PhoneBridge.csproj -c Release -r win-x64 --self-contained false -o windows/dist/PhoneBridge
+```
 
-Para saber o que está implementado versus planeado, consulte `BUGS_AND_ROADMAP.md` e `docs/diagnostics.md`.
+A pasta `windows/dist/PhoneBridge` fica com tudo o que é preciso (`PhoneBridge.exe`, o motor e a DLL da câmara). Pode copiá-la para onde quiser.
+
+## Utilização
+
+1. No telemóvel: abra a app PhoneBridge e toque em **Iniciar**.
+2. No PC: abra `PhoneBridge.exe` (o Windows pede permissão de administrador) e clique em **INICIAR**.
+   - Na primeira vez a app **instala sozinha o driver da câmara virtual**; demora alguns segundos.
+3. Com os interruptores **Câmara** e **Microfone** escolha o que transmitir. As alterações aplicam-se em direto.
+4. Numa aplicação de vídeo (por exemplo a **Câmara do Windows**), escolha **Câmera (PhoneBridge)**.
+
+O painel da direita mostra a ligação, o nome do telemóvel, o FPS e a **consola do serviço** (com Copiar, Limpar e Reiniciar).
+Para remover a câmara do sistema, desligue o interruptor **Driver da câmara virtual**.
+
+> Dica: se a câmara não aparecer numa app que já estava aberta, feche-a por completo e abra-a de novo **depois** de o PhoneBridge estar a transmitir.
+
+### Onde ficam os ficheiros
+
+| O quê | Onde |
+|---|---|
+| Driver da câmara (DLL registada) | `C:\Program Files\PhoneBridge` |
+| Registo do motor | `%LOCALAPPDATA%\PhoneBridge\engine.log` |
+| Registo da câmara (Frame Server) | `C:\ProgramData\PhoneBridge\logs\phonebridge_camera.log` |
+| Definições da app | `%APPDATA%\PhoneBridge\settings.json` |
+
+## Resolução de problemas
+
+| Sintoma | O que fazer |
+|---|---|
+| "A procurar o telemóvel" não passa | Cabo USB de dados, depuração USB autorizada, app Android aberta e em **Iniciar**. Teste com `adb devices`. |
+| A janela abre em branco | Instale o WebView2 Runtime. Se faltar a pasta `wwwroot`, repita o passo 3 e volte a publicar. |
+| A câmara não aparece numa app | Feche a app por completo e abra-a depois. Confirme que a **Câmara do Windows** a vê primeiro. Veja o interruptor do driver. |
+| Imagem preta | Sem sinal do telemóvel a câmara mostra preto. Veja a consola e o FPS no painel. Para testar sem telemóvel, defina `PHONEBRIDGE_TEST_PATTERN=1` antes de abrir o motor. |
+| Discord não lista a câmara | Reinicie o Discord (inclusive no tray), desative a aceleração de hardware e reselecione. Ver [`docs/diagnostics.md`](docs/diagnostics.md). |
+| OBS não lista a câmara | Esperado por enquanto: o OBS só lista câmaras DirectShow. Ver [Roadmap](#roadmap). |
+| Erro ao instalar o driver | Feche apps que usem a câmara (Câmara, Teams, Discord, OBS) e tente de novo. |
+
+Ao reportar um problema, anexe a **consola do serviço** (botão *Copiar*) e o ficheiro `phonebridge_camera.log`.
+
+Variáveis de ambiente úteis (opcionais):
+
+| Variável | Efeito |
+|---|---|
+| `PHONEBRIDGE_TEST_PATTERN=1` | Mostra um padrão de teste quando não há vídeo |
+| `PHONEBRIDGE_DUMP_H264=1` | Grava o fluxo H.264 bruto em `windows_output_video.h264` (cresce ~1 MB/s) |
+| `PHONEBRIDGE_DIAGNOSTIC_WAV=1` | Grava o áudio recebido num WAV de diagnóstico |
+
+## Estrutura do projeto
+
+```
+android/                 App Android (Kotlin, Compose, Camera2, MediaCodec, AudioRecord, JNI para o parser)
+protocol/                Protocolo binário partilhado e parser incremental (C++)
+windows/
+  service/               Motor C++: transporte ADB, ligação, vídeo/áudio, canal de controlo (--ui)
+  virtual-camera/        DLL COM da câmara virtual (Media Foundation) e memória partilhada
+  app/PhoneBridge/       App Windows: janela WPF + WebView2 e lógica de controlo (C#)
+  audio-driver/          Esboço do driver de microfone virtual (ainda não funcional)
+  scripts/               Instalação/remoção manual da câmara (legado; a app já faz isto)
+ui/                      Ecrã da app Windows (React + Vite + Tailwind)
+tools/                   Scripts de teste e diagnóstico (PowerShell)
+tests/protocol/          Testes do protocolo
+docs/                    Especificação, diagnóstico, DirectShow, assinatura de drivers
+```
+
+## Desenvolvimento
+
+**Testes**
+
+```powershell
+# Protocolo (C++)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+ctest --test-dir build --output-on-failure
+
+# Lógica do ecrã
+cd ui && npm test
+```
+
+**Ecrã sem telemóvel nem motor:** `cd ui && npm run dev` abre o ecrã no browser com um simulador.
+
+**Motor ↔ app:** o motor aceita `--ui` e fala em JSON por linhas.
+Comandos: `{"cmd":"set","camera":true,"mic":false}` e `{"cmd":"quit"}`.
+Eventos: `{"event":"status",...}`, `{"event":"ready"}`, `{"event":"error","code":"..."}`.
+Definição em [`windows/service/control/control_protocol.h`](windows/service/control/control_protocol.h).
+
+> Nota: nenhum destes componentes se dá por pronto só porque compila. A câmara virtual, o driver e a app têm de ser testados num Windows real.
+
+## Segurança e privacidade
+
+- Toda a comunicação é **local**: USB e `adb forward` para `127.0.0.1:27183`. O código do PhoneBridge não faz ligações à Internet.
+- A app pede **administrador**: regista uma DLL COM em `HKLM` (carregada pelo serviço do Windows *Frame Server*) e cria a memória partilhada global.
+- A memória partilhada `Global\PhoneBridgeCameraFrame` só pode ser aberta por SYSTEM, administradores e LOCAL SERVICE.
+- Para remover tudo: desligue o interruptor do driver, apague `C:\Program Files\PhoneBridge`, `%LOCALAPPDATA%\PhoneBridge` e `%APPDATA%\PhoneBridge`.
+
+## Roadmap
+
+Detalhes em [`BUGS_AND_ROADMAP.md`](BUGS_AND_ROADMAP.md) e [`docs/directshow-compatibility.md`](docs/directshow-compatibility.md).
+
+- [ ] **Filtro DirectShow** (x64) ligado à mesma memória partilhada, para o OBS e aplicações antigas. Requer dar leitura da memória partilhada ao utilizador normal.
+- [ ] **Microfone virtual** (driver WaveRT/SYSVAD assinado) para Discord, Teams e browsers.
+- [ ] Escolher câmara frontal/traseira, resolução e débito (requer alterações na app Android).
+- [ ] Instalador (`PhoneBridge-Setup.exe`) e *releases* automáticas com GitHub Actions.
+- [ ] Pré-visualização do vídeo na app Windows.
+- [ ] Vários telemóveis, recuperação após suspensão e troca de USB.
+
+## Contribuir
+
+Contribuições são bem-vindas — código, testes em hardware diferente, documentação e relatórios de erros.
+
+1. Abra uma *issue* a descrever o problema ou a ideia (com a consola e os registos, se for um erro).
+2. Faça *fork*, crie um ramo e mantenha as alterações pequenas e focadas.
+3. Corra os testes (`ctest` e `npm test`) e descreva **como testou** num Windows real.
+4. Abra o *pull request*.
+
+Seja claro sobre o que foi e o que não foi testado.
+
+## Licença
+
+[GPL-3.0](LICENSE). As dependências de terceiros (React, Vite, Tailwind CSS, lucide-react, fontes Inter e JetBrains Mono, Microsoft WebView2)
+mantêm as suas próprias licenças; ver `ui/package.json` e `windows/app/PhoneBridge/PhoneBridge.csproj`.
