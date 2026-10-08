@@ -14,7 +14,7 @@ This document serves as an exhaustive, master-level engineering reference for **
 |  AudioRecord -> PCM 48kHz          |    ADB socket  | ConnectionManager (Handshake/Frames) |
 |  BridgeServer (Socket Server)      |                |   |                                  |
 +------------------------------------+                |   +--> VideoReceiver -> H264Decoder  |
-                                                      |   +--> AudioReceiver -> waveOut/WAV  |
+                                                      |   +--> AudioReceiver -> ring buffer  |
                                                       |   +--> Shared Memory Writer (Writer) |
                                                       +--------------------------------------+
                                                                          |

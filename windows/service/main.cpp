@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
         control->start();
     }
 
-    std::cout << "[Main] PhoneBridge Windows Service is RUNNING continuously ('CÃ¢mera (PhoneBridge)'). Press Ctrl+C to stop.\n\n";
+    std::cout << "[Main] PhoneBridge Windows Service is RUNNING continuously ('Camera (PhoneBridge)'). Press Ctrl+C to stop.\n\n";
 
     while (g_serviceRunning) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));

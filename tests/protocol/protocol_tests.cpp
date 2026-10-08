@@ -11,7 +11,11 @@ static int g_fail = 0;
 
 static std::vector<uint8_t> makePacket(PacketType t, uint32_t seq, size_t payloadLen, uint8_t fill = 0xAB) {
     PacketHeader h; h.type = uint16_t(t); h.sequence = seq; h.timestamp = 123456789012ull + seq;
-    h.flags = uint32_t(StreamId::Video) | kFlagKeyframe;
+    h.flags = (t == PacketType::VideoFrame || t == PacketType::VideoConfig)
+        ? uint32_t(StreamId::Video) | (t == PacketType::VideoFrame ? kFlagKeyframe : 0)
+        : (t == PacketType::AudioFrame || t == PacketType::AudioConfig)
+            ? uint32_t(StreamId::Audio)
+            : uint32_t(StreamId::Control);
     std::vector<uint8_t> p(payloadLen, fill);
     return serializePacket(h, p);
 }
@@ -99,6 +103,7 @@ static void testRejects() {
     { auto b = good; b[4] = 2; CHECK(feedBad(b) == ErrorCode::ProtocolVersion); }
     { auto b = good; b[6] = 0x77; b[7] = 0x77; CHECK(feedBad(b) == ErrorCode::InvalidType); }
     { auto b = good; b[20] = b[21] = b[22] = b[23] = 0xFF; CHECK(feedBad(b) == ErrorCode::PacketTooLarge); }
+    { auto b = good; b[8] = 0x01; CHECK(feedBad(b) == ErrorCode::InvalidPacket); }
     { PacketParser p(1000); auto b = makePacket(PacketType::VideoFrame, 1, 1001); CHECK(feedBad(b, &p) == ErrorCode::PacketTooLarge); }
     // sticky error + reset
     PacketParser p; auto bad = good; bad[0] = 0;
@@ -110,7 +115,7 @@ static void testRejects() {
 
 static void testOversizeDoesNotAllocate() {
     // Header claims max+1: must be rejected before any payload buffer is sized.
-    PacketHeader h; h.type = uint16_t(PacketType::VideoFrame); h.payloadSize = kMaxPayloadSize + 1;
+    PacketHeader h; h.type = uint16_t(PacketType::VideoFrame); h.flags = uint32_t(StreamId::Video); h.payloadSize = kMaxPayloadSize + 1;
     auto hb = encodeHeader(h);
     PacketParser p;
     CHECK(p.feed(hb, [](Packet&&) {}) == ErrorCode::PacketTooLarge);

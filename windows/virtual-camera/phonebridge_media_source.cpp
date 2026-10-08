@@ -37,6 +37,7 @@ HRESULT PhoneBridgeMediaSource::initialize() {
     if (!m_store || !m_events) return E_OUTOFMEMORY;
 
     m_store->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+    m_store->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY, KSCATEGORY_VIDEO_CAMERA);
     m_store->SetString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, L"C\u00e2mera (PhoneBridge)");
 
     // ---- media type: NV12 1920x1080 @ 30 ----
@@ -54,10 +55,20 @@ HRESULT PhoneBridgeMediaSource::initialize() {
     type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
     type->SetUINT32(MF_MT_DEFAULT_STRIDE, 1920);
     type->SetUINT32(MF_MT_SAMPLE_SIZE, 1920 * 1080 * 3 / 2);
+    type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
     type->SetUINT32(MF_MT_AVG_BITRATE, 1920u * 1080u * 12u * 30u);
 
-    IMFMediaType* types[1] = {type.Get()};
-    hr = MFCreateStreamDescriptor(0, 1, types, m_sd.put());
+    pb::ComPtr<IMFMediaType> yuy2;
+    hr = MFCreateMediaType(yuy2.put());
+    if (FAILED(hr)) return hr;
+    hr = type->CopyAllItems(yuy2.Get());
+    if (FAILED(hr)) return hr;
+    yuy2->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_YUY2);
+    yuy2->SetUINT32(MF_MT_DEFAULT_STRIDE, 1920 * 2);
+    yuy2->SetUINT32(MF_MT_SAMPLE_SIZE, 1920 * 1080 * 2);
+
+    IMFMediaType* types[2] = {type.Get(), yuy2.Get()};
+    hr = MFCreateStreamDescriptor(0, 2, types, m_sd.put());
     if (FAILED(hr)) return hr;
 
     pb::ComPtr<IMFMediaTypeHandler> handler;

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstring>
 #include <new>
+#include <vector>
 #include "pb_ks.h"
 #include "pb_log.h"
 #include "pb_module.h"
@@ -16,6 +17,24 @@
     } while (0)
 
 namespace phonebridge {
+
+namespace {
+void nv12ToYuy2(const uint8_t* nv12, uint8_t* yuy2, uint32_t width, uint32_t height) {
+    const uint8_t* yPlane = nv12;
+    const uint8_t* uvPlane = nv12 + static_cast<size_t>(width) * height;
+    for (uint32_t y = 0; y < height; ++y) {
+        const uint8_t* rowY = yPlane + static_cast<size_t>(y) * width;
+        const uint8_t* rowUV = uvPlane + static_cast<size_t>(y / 2) * width;
+        uint8_t* rowOut = yuy2 + static_cast<size_t>(y) * width * 2;
+        for (uint32_t x = 0; x < width; x += 2) {
+            rowOut[x * 2 + 0] = rowY[x];
+            rowOut[x * 2 + 1] = rowUV[x];
+            rowOut[x * 2 + 2] = rowY[x + 1];
+            rowOut[x * 2 + 3] = rowUV[x + 1];
+        }
+    }
+}
+}
 
 PhoneBridgeMediaStream::PhoneBridgeMediaStream() {
     pb::moduleCount()++;
@@ -98,34 +117,53 @@ void PhoneBridgeMediaStream::deliveryLoop() {
 }
 
 void PhoneBridgeMediaStream::deliverOne(const pb::ComPtr<IUnknown>& token) {
-    PB_LOG("Stream: deliverOne() token=%p bufferBytes=%u", static_cast<void*>(token.Get()), shared::kFrameBytes);
+    GUID subtype = MFVideoFormat_NV12;
+    pb::ComPtr<IMFMediaTypeHandler> handler;
+    if (m_sd && SUCCEEDED(m_sd->GetMediaTypeHandler(handler.put()))) {
+        pb::ComPtr<IMFMediaType> current;
+        if (SUCCEEDED(handler->GetCurrentMediaType(current.put())))
+            current->GetGUID(MF_MT_SUBTYPE, &subtype);
+    }
+    const bool yuy2 = subtype == MFVideoFormat_YUY2;
+    const size_t outputBytes = yuy2 ? static_cast<size_t>(shared::kWidth) * shared::kHeight * 2
+                                    : shared::kFrameBytes;
+    PB_LOG("Stream: deliverOne() token=%p format=%s bytes=%zu", static_cast<void*>(token.Get()),
+           yuy2 ? "YUY2" : "NV12", outputBytes);
 
     pb::ComPtr<IMFMediaBuffer> buffer;
-    PB_HR(MFCreateMemoryBuffer(shared::kFrameBytes, buffer.put()));
+    PB_HR(MFCreateMemoryBuffer(outputBytes, buffer.put()));
 
     BYTE* data = nullptr;
     PB_HR(buffer->Lock(&data, nullptr, nullptr));
 
+    std::vector<uint8_t> nv12;
+    uint8_t* frame = data;
+    if (yuy2) {
+        nv12.resize(shared::kFrameBytes);
+        frame = nv12.data();
+    }
     int64_t tsUs = 0;
-    const bool signal = m_reader.readLatest(data, &tsUs);
+    const bool signal = m_reader.readLatest(frame, &tsUs);
     if (!signal) {
         // Standalone test pattern generator: moving bright vertical bar on dark gray background
         static uint32_t counter = 0;
         counter++;
         const uint32_t w = shared::kWidth;
         const uint32_t h = shared::kHeight;
-        std::memset(data, 64, size_t(w) * h);
+        std::memset(frame, 64, size_t(w) * h);
         uint32_t barWidth = 200;
         uint32_t barX = (counter * 8) % (w - barWidth);
         for (uint32_t y = 0; y < h; ++y) {
-            std::memset(data + size_t(y) * w + barX, 220, barWidth);
+            std::memset(frame + size_t(y) * w + barX, 220, barWidth);
         }
-        uint8_t* uv = data + size_t(w) * h;
+        uint8_t* uv = frame + size_t(w) * h;
         std::memset(uv, 128, size_t(w) * h / 2);
     }
 
+    if (yuy2) nv12ToYuy2(frame, data, shared::kWidth, shared::kHeight);
+
     PB_HR(buffer->Unlock());
-    PB_HR(buffer->SetCurrentLength(shared::kFrameBytes));
+    PB_HR(buffer->SetCurrentLength(static_cast<DWORD>(outputBytes)));
 
     if (signal != m_hadSignal) {
         m_hadSignal = signal;

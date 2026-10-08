@@ -72,9 +72,11 @@ private:
     bool m_sentMic{false};
     std::atomic<int64_t> m_lastVideoMs{0};
     std::atomic<int64_t> m_lastAudioMs{0};
+    std::atomic<int64_t> m_lastHeartbeatAckMs{0};
     std::atomic<uint64_t> m_videoFrames{0};
     mutable std::mutex m_deviceMutex;
     std::string m_deviceName;
+    uint32_t m_controlSequence{0}; // worker thread only; wraps naturally
     void setDeviceName(std::string name) { std::lock_guard<std::mutex> g(m_deviceMutex); m_deviceName = std::move(name); }
 };
 

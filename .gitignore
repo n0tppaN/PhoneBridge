@@ -8,14 +8,26 @@ android/build/
 
 # Windows / CMake / Build / Dist
 windows/build/
+windows/build-*/
 build/
 dist/
 .vs/
 x64/
 Debug/
 Release/
+**/obj/
+**/bin/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.slnx
+*.user
 *.exe
 *.dll
+*.sys
 *.pdb
 *.iobj
 *.ipdb
@@ -25,11 +37,17 @@ windows_output_audio.wav
 windows_output_video.h264
 tools/*.wav
 tools/*.h264
+*.log
 
 # IDE / OS / Internal Artifacts / Dumps
 .idea/
 .DS_Store
 Thumbs.db
 .artifacts/
-*.zip
-*.txt
+*.tmp
+*.bak
+
+# Generated frontend output (rebuild from ui/)
+windows/app/PhoneBridge/wwwroot/assets/
+
+# Do not ignore all text: documentation and fixtures are source.

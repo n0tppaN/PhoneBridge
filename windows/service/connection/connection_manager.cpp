@@ -75,7 +75,7 @@ bool ConnectionManager::sendPacket(uint16_t type, const uint8_t* payload, size_t
     h.timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
     h.payloadSize = static_cast<uint32_t>(size);
-    h.sequence = 0;
+    h.sequence = m_controlSequence++;
 
     const auto hb = phonebridge::protocol::encodeHeader(h);
     std::vector<uint8_t> buf(phonebridge::protocol::kHeaderSize + size);
@@ -146,6 +146,8 @@ void ConnectionManager::runLoop() {
         m_sentMic = false;
         m_lastVideoMs = 0;
         m_lastAudioMs = 0;
+        m_lastHeartbeatAckMs = 0;
+        m_controlSequence = 0;
         m_state = ConnectionState::CONNECTING;
         std::cout << "[ConnectionManager] [Session #" << m_sessionId << "] Attempting connection to phone...\n";
 
@@ -168,6 +170,7 @@ void ConnectionManager::runLoop() {
 
             uint8_t rxBuf[8192];
             auto lastHeartbeat = std::chrono::steady_clock::now();
+            m_lastHeartbeatAckMs = nowMs();
 
             while (m_running && m_transport->isConnected()) {
                 auto now = std::chrono::steady_clock::now();
@@ -175,6 +178,10 @@ void ConnectionManager::runLoop() {
                     uint64_t ts = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
                     sendPacket(0x0F00, reinterpret_cast<const uint8_t*>(&ts), sizeof(ts)); // HEARTBEAT
                     lastHeartbeat = now;
+                }
+                if (nowMs() - m_lastHeartbeatAckMs.load() > 6000) {
+                    std::cout << "[ConnectionManager] Heartbeat timeout; reconnecting.\n";
+                    break;
                 }
                 syncStreams();  // picks up toggles made in the UI (at most ~1 s later when idle)
 
@@ -187,7 +194,7 @@ void ConnectionManager::runLoop() {
                 auto& videoRec = m_videoReceiver;
                 auto& audioRec = m_audioReceiver;
 
-                m_parser.feed(std::span<const uint8_t>(rxBuf, received), [this, &videoRec, &audioRec](phonebridge::protocol::Packet&& pkt) {
+                const auto parseError = m_parser.feed(std::span<const uint8_t>(rxBuf, received), [this, &videoRec, &audioRec](phonebridge::protocol::Packet&& pkt) {
                     if (pkt.header.type == 0x0100) { // VIDEO_CONFIG
                         videoRec.handleVideoConfig(pkt.payload.data(), pkt.payload.size());
                     } else if (pkt.header.type == 0x0101) { // VIDEO_FRAME
@@ -198,9 +205,13 @@ void ConnectionManager::runLoop() {
                         m_lastAudioMs = nowMs();
                         audioRec.handleAudioFrame(pkt.payload.data(), pkt.payload.size(), pkt.header.timestamp);
                     } else if (pkt.header.type == 0x0F01) { // HEARTBEAT_ACK
-                        // Heartbeat acknowledged
+                        m_lastHeartbeatAckMs = nowMs();
                     }
                 });
+                if (parseError != phonebridge::protocol::ErrorCode::Ok) {
+                    std::cerr << "[ConnectionManager] Protocol error while streaming; reconnecting.\n";
+                    break;
+                }
             }
         }
 

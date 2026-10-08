@@ -59,6 +59,7 @@ inline ErrorCode validateHeader(const PacketHeader& h, uint32_t maxPayload = kMa
     if (h.magic != kMagic) return ErrorCode::InvalidPacket;
     if (h.version != kVersion) return ErrorCode::ProtocolVersion;
     if (!isKnownType(h.type)) return ErrorCode::InvalidType;
+    if (!flagsMatchType(h.type, h.flags)) return ErrorCode::InvalidPacket;
     if (h.payloadSize > maxPayload) return ErrorCode::PacketTooLarge;
     return ErrorCode::Ok;
 }

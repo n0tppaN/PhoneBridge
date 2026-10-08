@@ -67,9 +67,21 @@ inline constexpr uint32_t kFlagStreamMask = 0xFFu;
 inline constexpr uint32_t kFlagKeyframe = 1u << 8;
 inline constexpr uint32_t kFlagConfig = 1u << 9;
 inline constexpr uint32_t kFlagDiscontinuity = 1u << 10;
+inline constexpr uint32_t kFlagReservedMask = 0xFFFFF800u;
 
 constexpr StreamId streamOf(uint32_t flags) {
     return static_cast<StreamId>(flags & kFlagStreamMask);
+}
+
+constexpr bool flagsMatchType(uint16_t type, uint32_t flags) {
+    if ((flags & kFlagReservedMask) != 0) return false;
+    const auto t = static_cast<PacketType>(type);
+    const auto stream = streamOf(flags);
+    if (t == PacketType::VideoConfig || t == PacketType::VideoFrame)
+        return stream == StreamId::Video;
+    if (t == PacketType::AudioConfig || t == PacketType::AudioFrame)
+        return stream == StreamId::Audio;
+    return stream == StreamId::Control;
 }
 
 enum class ErrorCode : uint16_t {
