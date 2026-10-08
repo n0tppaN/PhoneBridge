@@ -1,0 +1,35 @@
+# Android
+android/.gradle/
+android/app/build/
+android/.cxx/
+android/build/
+*.iml
+.gradle/
+
+# Windows / CMake / Build / Dist
+windows/build/
+build/
+dist/
+.vs/
+x64/
+Debug/
+Release/
+*.exe
+*.dll
+*.pdb
+*.iobj
+*.ipdb
+
+# Media output test files
+windows_output_audio.wav
+windows_output_video.h264
+tools/*.wav
+tools/*.h264
+
+# IDE / OS / Internal Artifacts / Dumps
+.idea/
+.DS_Store
+Thumbs.db
+.artifacts/
+*.zip
+*.txt

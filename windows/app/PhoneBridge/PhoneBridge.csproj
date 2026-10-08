@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PhoneBridge</AssemblyName>
+    <RootNamespace>PhoneBridge.Desktop</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>0.2.0</Version>
+    <PlatformTarget>x64</PlatformTarget>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Product>PhoneBridge</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Hosts the web UI. "1.0.*" always takes the newest 1.0 release. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The screen (React build). It is already built and shipped in wwwroot. -->
+    <Content Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- The engine and the camera DLL, copied next to PhoneBridge.exe when they have been built. -->
+    <None Include="..\..\build\Release\phonebridge_service.exe" Condition="Exists('..\..\build\Release\phonebridge_service.exe')"
+          Link="phonebridge_service.exe" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\build\Release\phonebridge_mediasource.dll" Condition="Exists('..\..\build\Release\phonebridge_mediasource.dll')"
+          Link="phonebridge_mediasource.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Optional: rebuild the screen from ..\..\..\ui first (needs Node.js):  dotnet build -p:BuildUi=true -->
+  <Target Name="BuildUi" BeforeTargets="BeforeBuild" Condition="'$(BuildUi)' == 'true' And Exists('..\..\..\ui\package.json')">
+    <Exec Command="npm install --no-audit --no-fund" WorkingDirectory="..\..\..\ui" Condition="!Exists('..\..\..\ui\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="..\..\..\ui" />
+  </Target>
+
+</Project>

@@ -1,0 +1,46 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=MEDIA
+ClassGUID={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+CatalogFile=phonebridge_audio.cat
+DriverVer=10/04/2026,1.0.0.0
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+phonebridge_audio.sys = 1,,
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64
+
+[Standard.NTamd64]
+%DeviceDesc%=PhoneBridge_Device, Root\PhoneBridgeAudio
+
+[PhoneBridge_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+phonebridge_audio.sys
+
+[PhoneBridge_Device.NT.Services]
+AddService = phonebridge_audio, %SPSVCINST_ASSOCSERVICE%, PhoneBridge_Service_Inst
+
+[PhoneBridge_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\phonebridge_audio.sys
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "PhoneBridge"
+DiskName = "PhoneBridge Virtual Audio Installation Disk"
+DeviceDesc = "Microfone (PhoneBridge)"
+ServiceDesc = "PhoneBridge Virtual Audio Service"
