@@ -443,9 +443,9 @@ function SettingsPanel({
             <div className="flex min-w-0 items-center gap-2.5">
               <MonitorUp className="size-4 shrink-0 text-accent-light" />
               <div className="min-w-0">
-                <p className="text-[11px] font-medium text-ink">Driver da câmara virtual</p>
+                <p className="text-[11px] font-medium text-ink">Fonte de câmara Windows</p>
                 <p className="truncate text-[9px] text-ink-dim">
-                  {state.driver.busy ? 'A trabalhar… (pode demorar uns segundos)' : state.driver.installed ? 'Instalado · phonebridge_mediasource.dll' : 'Não instalado · ligue para instalar'}
+                  {state.driver.busy ? 'A trabalhar… (pode demorar uns segundos)' : state.driver.installed ? 'Media Foundation instalada · OBS/DirectShow experimental' : 'Não instalada · ligue para instalar'}
                 </p>
               </div>
             </div>
@@ -453,7 +453,7 @@ function SettingsPanel({
               checked={state.driver.installed}
               disabled={state.driver.busy}
               onChange={onToggleDriver}
-              label="Instalar ou remover o driver da câmara virtual"
+              label="Instalar ou remover a fonte Media Foundation da câmara"
               thumbClassName="-ml-4 -mr-4"
             />
           </div>

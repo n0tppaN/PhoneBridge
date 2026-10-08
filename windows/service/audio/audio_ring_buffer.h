@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <mutex>
 #include <algorithm>
+#include <cstring>
 
 namespace phonebridge::audio {
 
@@ -68,8 +69,8 @@ public:
         return (static_cast<double>(m_size) / m_capacity) * 100.0;
     }
 
-    uint64_t underruns() const { return m_underruns; }
-    uint64_t overruns() const { return m_overruns; }
+    uint64_t underruns() const { std::lock_guard<std::mutex> lock(m_mutex); return m_underruns; }
+    uint64_t overruns() const { std::lock_guard<std::mutex> lock(m_mutex); return m_overruns; }
 
     void reset() {
         std::lock_guard<std::mutex> lock(m_mutex);

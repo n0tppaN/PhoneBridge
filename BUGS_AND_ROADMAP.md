@@ -12,6 +12,7 @@
 ## Experimental
 
 - Compatibilidade com Discord e consumidores Media Foundation restritivos.
+- Compatibilidade com OBS/DirectShow: ainda não implementada; OBS enumera filtros DirectShow, não esta source Media Foundation.
 - Múltiplos consumidores simultâneos.
 - Recovery após suspensão, troca de USB e vários dispositivos ADB.
 
@@ -21,6 +22,7 @@
 - Driver WaveRT/SYSVAD de áudio de produção.
 - Assinatura/distribuição de driver para Secure Boot.
 - Testes end-to-end Windows automatizados e installer com rollback.
+- Filtro DirectShow/KS x64 com output YUY2 ligado ao mesmo shared memory.
 
 ## Decisão sem VB-Audio
 

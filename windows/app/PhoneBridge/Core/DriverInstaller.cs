@@ -12,7 +12,7 @@ public interface IDriverInstaller
 }
 
 /// <summary>
-/// Installs / removes the virtual camera (phonebridge_mediasource.dll) from inside the app - the same steps
+/// Installs / removes the Media Foundation virtual camera source (phonebridge_mediasource.dll) from inside the app - the same steps
 /// the old install_camera.ps1 did, so no PowerShell is needed. Requires the app to run as Administrator.
 /// </summary>
 public sealed class DriverInstaller : IDriverInstaller
@@ -62,7 +62,7 @@ public sealed class DriverInstaller : IDriverInstaller
             var reg = await RunAsync("regsvr32.exe", $"/s \"{InstalledDll}\"");
             if (reg != 0) return (false, $"O registo da DLL falhou (regsvr32 código {reg}).");
             log("[driver] DLL registada (HKLM).");
-            return (IsInstalled(), IsInstalled() ? "Driver instalado." : "O registo não ficou visível no Windows.");
+            return (IsInstalled(), IsInstalled() ? "Fonte Media Foundation instalada." : "O registo não ficou visível no Windows.");
         }
         catch (Exception ex) { return (false, "Falha ao instalar: " + ex.Message); }
         finally { await StartFrameServerAsync(); log("[driver] Frame Server reiniciado."); }
@@ -77,8 +77,8 @@ public sealed class DriverInstaller : IDriverInstaller
             if (File.Exists(InstalledDll)) await RunAsync("regsvr32.exe", $"/u /s \"{InstalledDll}\"");
             try { if (Directory.Exists(InstallDir)) Directory.Delete(InstallDir, recursive: true); }
             catch (IOException) { return (false, "Não foi possível apagar os ficheiros (em uso). Feche as aplicações de vídeo e tente de novo."); }
-            log("[driver] Driver removido.");
-            return (!IsInstalled(), "Driver removido.");
+            log("[camera] Fonte Media Foundation removida.");
+            return (!IsInstalled(), "Fonte Media Foundation removida.");
         }
         catch (Exception ex) { return (false, "Falha ao remover: " + ex.Message); }
         finally { await StartFrameServerAsync(); }

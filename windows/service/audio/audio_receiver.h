@@ -3,15 +3,13 @@
 #include <string>
 #include <fstream>
 #include <cstdint>
-#include <windows.h>
-#include <mmsystem.h>
-
-#pragma comment(lib, "winmm.lib")
 
 namespace phonebridge::audio {
 
 class AudioReceiver {
 public:
+    // The ring is the production-side sink. WAV output is enabled only by
+    // PHONEBRIDGE_DIAGNOSTIC_WAV=1 and is never created by default.
     explicit AudioReceiver(size_t ringBufferCapacity = 19200, const std::string& wavOutputPath = "windows_output_audio.wav");
     ~AudioReceiver();
 
@@ -23,8 +21,6 @@ public:
 private:
     void writeWavHeader();
     void finalizeWavFile();
-    void initWaveOut();
-    void playPcmLive(const uint8_t* data, size_t size);
 
     AudioRingBuffer m_ringBuffer;
     std::string m_wavOutputPath;
@@ -35,8 +31,6 @@ private:
     uint32_t m_dataBytesWritten{0};
     bool m_wavInitialized{false};
 
-    HWAVEOUT m_hWaveOut{nullptr};
-    bool m_waveOutInitialized{false};
 };
 
 } // namespace phonebridge::audio

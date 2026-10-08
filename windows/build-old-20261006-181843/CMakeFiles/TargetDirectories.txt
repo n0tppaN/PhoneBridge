@@ -1,4 +1,0 @@
-C:/NELSON/AD_Proj/phonebridge/windows/build/CMakeFiles/phonebridge_mediasource.dir
-C:/NELSON/AD_Proj/phonebridge/windows/build/CMakeFiles/phonebridge_service.dir
-C:/NELSON/AD_Proj/phonebridge/windows/build/CMakeFiles/ALL_BUILD.dir
-C:/NELSON/AD_Proj/phonebridge/windows/build/CMakeFiles/ZERO_CHECK.dir
