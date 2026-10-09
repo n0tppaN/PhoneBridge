@@ -29,6 +29,10 @@
           Link="phonebridge_service.exe" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\build\Release\phonebridge_mediasource.dll" Condition="Exists('..\..\build\Release\phonebridge_mediasource.dll')"
           Link="phonebridge_mediasource.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\build\Release\phonebridge_directshow.dll" Condition="Exists('..\..\build\Release\phonebridge_directshow.dll')"
+          Link="phonebridge_directshow.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\build\Release\phonebridge_dshow_diagnostic.exe" Condition="Exists('..\..\build\Release\phonebridge_dshow_diagnostic.exe')"
+          Link="phonebridge_dshow_diagnostic.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Optional: rebuild the screen from ..\..\..\ui first (needs Node.js):  dotnet build -p:BuildUi=true -->

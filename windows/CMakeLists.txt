@@ -53,3 +53,32 @@ if(WIN32)
     target_link_libraries(phonebridge_mediasource PRIVATE mfplat mfuuid ole32 uuid advapi32 ksuser)
     target_link_libraries(phonebridge_service PRIVATE ws2_32 mfplat mfuuid mf mfsensorgroup ole32 advapi32 shlwapi)
 endif()
+
+# Separate legacy capture source: OBS enumerates DirectShow, not IMFMediaSource.
+option(PHONEBRIDGE_BUILD_DIRECTSHOW "Build the x64 DirectShow camera for OBS" ON)
+if(PHONEBRIDGE_BUILD_DIRECTSHOW)
+    if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "PhoneBridge DirectShow requires Windows MSVC x64 (-A x64).")
+    endif()
+    include(cmake/DirectShowBaseClasses.cmake)
+    add_library(phonebridge_directshow SHARED
+        directshow-camera/phonebridge_filter.cpp
+        directshow-camera/dllmain.cpp
+        directshow-camera/phonebridge_directshow.def)
+    set_target_properties(phonebridge_directshow PROPERTIES PREFIX ""
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    target_compile_definitions(phonebridge_directshow PRIVATE NOMINMAX UNICODE _UNICODE
+        $<$<CONFIG:Debug>:DEBUG>)
+    target_compile_options(phonebridge_directshow PRIVATE /W4 /EHsc)
+    target_link_libraries(phonebridge_directshow PRIVATE phonebridge_strmbase)
+
+    add_executable(phonebridge_dshow_diagnostic directshow-camera/diagnostic.cpp)
+    target_compile_definitions(phonebridge_dshow_diagnostic PRIVATE NOMINMAX UNICODE _UNICODE)
+    target_link_libraries(phonebridge_dshow_diagnostic PRIVATE strmiids ole32 oleaut32 uuid)
+    target_compile_options(phonebridge_dshow_diagnostic PRIVATE /W4 /EHsc)
+endif()
+
+enable_testing()
+add_executable(nv12_to_yuy2_tests ../tests/video/nv12_to_yuy2_tests.cpp)
+target_include_directories(nv12_to_yuy2_tests PRIVATE directshow-camera)
+add_test(NAME nv12_to_yuy2 COMMAND nv12_to_yuy2_tests)

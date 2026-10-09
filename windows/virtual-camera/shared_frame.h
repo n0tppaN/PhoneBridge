@@ -86,9 +86,10 @@ public:
     bool open() {
         if (m_view) return true;
         PSECURITY_DESCRIPTOR sd = nullptr;
-        // SYSTEM + Administrators: full. LOCAL SERVICE (Frame Server): read only.
+        // SYSTEM + Administrators: full. LOCAL SERVICE (Frame Server) and
+        // interactive users (OBS running unelevated): read only. No user write.
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;LS)", SDDL_REVISION_1, &sd, nullptr)) {
+                L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GR;;;LS)(A;;GR;;;IU)", SDDL_REVISION_1, &sd, nullptr)) {
             m_lastError = GetLastError();
             return false;
         }

@@ -1,35 +1,35 @@
-# Diagnóstico de enumeração DirectShow/Media Foundation.
-# Não altera o sistema. Executar numa PowerShell x64.
+# Read-only registration report plus actual ICreateDevEnum/pin diagnostic.
+# Run in PowerShell x64. --run is optional and creates a temporary Null Renderer graph.
+param([string]$DiagnosticExe = '', [switch]$RunGraph)
 $ErrorActionPreference = 'Stop'
-
+if (-not [Environment]::Is64BitProcess) { throw 'Use uma PowerShell x64 para a câmara DirectShow x64.' }
 $mfClsid = '{E6B65C58-4D2A-4C20-9F16-368798135CC4}'
-$dsCategory = '{860BB310-5D01-11D0-BD3B-00A0C911CE86}' # CLSID_VideoInputDeviceCategory
-$mfCategory = '{E5323777-F976-4F5B-9B55-B94699C46E44}' # KSCATEGORY_VIDEO_CAMERA
-
-Write-Host "=== PhoneBridge camera registration ==="
-$clsidPath = "HKLM:\SOFTWARE\Classes\CLSID\$mfClsid\InprocServer32"
-if (Test-Path $clsidPath) {
-    $p = Get-ItemProperty $clsidPath
-    Write-Host "Media Foundation COM CLSID: OK"
-    Write-Host "  DLL: $($p.'(default)')"
-} else {
-    Write-Warning "Media Foundation COM CLSID não está registado."
+$dsClsid = '{497D53E0-1D46-4E4B-A959-88A413139466}'
+$category = '{860BB310-5D01-11D0-BD3B-00A0C911CE86}'
+foreach ($source in @(@('Media Foundation', $mfClsid), @('DirectShow', $dsClsid))) {
+    $path = "HKLM:\SOFTWARE\Classes\CLSID\$($source[1])\InprocServer32"
+    if (Test-Path $path) {
+        $dll = (Get-ItemProperty $path).'(default)'
+        $exists = $false
+        if ($dll) { $exists = Test-Path -LiteralPath $dll -PathType Leaf }
+        Write-Host "$($source[0]) COM: $dll (ficheiro existe: $exists)"
+    } else { Write-Warning "$($source[0]) COM ausente" }
 }
-
-$instancePath = "HKLM:\SOFTWARE\Classes\CLSID\$dsCategory\Instance\$mfClsid"
-if (Test-Path $instancePath) {
-    Write-Host "DirectShow video-input category: PRESENT"
-} else {
-    Write-Host "DirectShow video-input category: AUSENTE"
-    Write-Host "Isto é esperado enquanto o filtro DirectShow não estiver implementado."
+$instance = "HKLM:\SOFTWARE\Classes\CLSID\$category\Instance\$dsClsid"
+Write-Host "DirectShow VideoInputDeviceCategory: $(Test-Path $instance)"
+Write-Host 'Chaves de registo não provam enumeração/ativação: o teste abaixo usa ICreateDevEnum.'
+if (-not $DiagnosticExe) {
+    $root = Split-Path -Parent $PSScriptRoot
+    $found = Get-ChildItem (Join-Path $root 'windows\build') -Recurse -Filter 'phonebridge_dshow_diagnostic.exe' -ErrorAction SilentlyContinue |
+             Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($found) { $DiagnosticExe = $found.FullName }
 }
-
-$mfInstancePath = "HKLM:\SOFTWARE\Classes\CLSID\$mfCategory\Instance\$mfClsid"
-if (Test-Path $mfInstancePath) {
-    Write-Host "KSCATEGORY_VIDEO_CAMERA registration: PRESENT"
-} else {
-    Write-Host "KSCATEGORY_VIDEO_CAMERA registration: not represented as a legacy DirectShow filter"
+if (-not $DiagnosticExe -or -not (Test-Path -LiteralPath $DiagnosticExe)) {
+    Write-Warning 'Falta phonebridge_dshow_diagnostic.exe. Compile o target e/ou passe -DiagnosticExe; enumeração COM NÃO foi testada.'
+    exit 3
 }
-
-Write-Host ""
-Write-Host "Interpretação: se a Câmara do Windows funciona e a categoria DirectShow está AUSENTE, OBS não terá PhoneBridge no dropdown."
+if ($RunGraph) { & $DiagnosticExe --run } else { & $DiagnosticExe }
+$code = $LASTEXITCODE
+Write-Host "Resultado: $code (0=enumeração/interfaces OK; 1=falha COM/contrato; 2=PhoneBridge ausente; 3=teste indisponível)."
+if ($RunGraph) { Write-Host 'Null Renderer verifica conexão/lifecycle, não pixels nem compatibilidade final OBS.' }
+exit $code
